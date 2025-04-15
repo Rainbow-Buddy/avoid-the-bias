@@ -8,6 +8,7 @@ A new Flutter minigame module project.
 
 ### [조작법]
 화면의 조이스틱을 통해 위, 아래, 오른쪽으로 이동할 수 있습니다.
+
 ---
 
 ## Project Explanation
@@ -77,6 +78,7 @@ assets/
 - 충돌 감지 시스템: 장애물, 안전 지대와의 충돌 처리
 - 조이스틱 컨트롤: 터치스크린 기기에 최적화된 컨트롤 구현
 - JSON 기반 퀴즈 데이터: 확장 가능한 퀴즈 시스템
+
 ---
 
 ## Debugging
