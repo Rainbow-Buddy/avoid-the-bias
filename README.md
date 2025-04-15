@@ -16,7 +16,7 @@ A new Flutter minigame module project.
 - Flutter 프레임워크
 - Flame 게임 엔진
 - Dart 언어
-- 
+  
 ### Project Structure
 #### Overview
 ```
