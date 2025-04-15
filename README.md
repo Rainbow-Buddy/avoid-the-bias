@@ -1,6 +1,6 @@
-# minigame_avoid_the_bias
+# 차별을 피해라!
 
-A new Flutter module project.
+A new Flutter minigame module project.
 
 ## Getting Started
 
