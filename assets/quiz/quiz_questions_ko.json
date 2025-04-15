@@ -1,0 +1,42 @@
+[
+  {
+    "question": "트랜스젠더(Transgender)는 성별정체성이 태어날 때 지정된 성별과 일치하지 않는 사람을 의미한다.",
+    "answer": true
+  },
+  {
+    "question": "동성애는 선택이다.",
+    "answer": false
+  },
+  {
+    "question": "바이섹슈얼(Bisexual)은 둘 이상의 성별에 끌림을 느끼는 사람을 의미한다.",
+    "answer": true
+  },
+  {
+    "question": "레즈비언(Lesbian)은 여성에게 감정적, 성적으로 끌리는 여성을 의미한다.",
+    "answer": true
+  },
+  {
+    "question": "성소수자는 정신 질환이다.",
+    "answer": false
+  },
+  {
+    "question": "성소수자에 대한 차별은 법적으로 모두 금지되어 있다.",
+    "answer": false
+  },
+  {
+    "question": "젠더(Gender)와 생물학적 성(Sex)은 같은 의미이다.",
+    "answer": false
+  },
+  {
+    "question": "앨라이(Ally)는 성소수자가 아니지만 성소수자의 권리를 지지하는 사람을 의미한다.",
+    "answer": true
+  },
+  {
+    "question": "성소수자는 모든 나라에서 합법적으로 결혼할 수 있다.",
+    "answer": false
+  },
+  {
+    "question": "퀴어(Queer)는 모든 성소수자를 포괄하는 용어로 사용되기도 한다.",
+    "answer": true
+  }
+] 
