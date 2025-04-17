@@ -1,99 +1,161 @@
-import 'package:flame/components.dart';
-import 'package:flame/events.dart';
-import 'package:flame/game.dart';
-import 'package:flutter/material.dart';
-import 'dart:math';
+// avoid_the_bias_game.dart
+// 게임의 전체 흐름을 관리하는 Flame 게임 클래스입니다. 
+// 플레이어, 장애물, 생명 HUD, 퀴즈 오버레이, SafeZone, 버튼 등 주요 구성 요소를 포함합니다.
 
+import 'dart:math';
+import 'package:flame/components.dart';
+import 'package:flame/input.dart';
+import 'package:flame/game.dart';
+import 'package:flame/collisions.dart';
+import 'package:flame/parallax.dart';
+import 'package:flutter/material.dart';
 import '../player/player_component.dart';
 import '../hud/life_display.dart';
 import '../hud/timer_bar.dart';
 import '../component/discrimination_obstacle.dart';
 import '../component/safe_zone.dart';
-import '../component/background_component.dart';
+import '../overlay/quiz_overlay.dart';
+import '../overlay/start_button_overlay.dart';
 
-class AvoidTheBiasGame extends FlameGame
-    with HasCollisionDetection, HasKeyboardHandlerComponents {
+class AvoidTheBiasGame extends FlameGame with HasCollisionDetection {
+  static const double screenWidth = 540;
+  static const double screenHeight = 960;
+
   late PlayerComponent player;
   late LifeDisplay lifeDisplay;
   late TimerBar timerBar;
-  late CameraComponent cameraComponent;
-  late JoystickComponent joystick;
-  late BackgroundComponent background;
+  SafeZone? safeZone;
+  late ParallaxComponent background;
 
   int round = 1;
-  int maxRounds = 3;
+  final int maxRounds = 3;
   int lives = 3;
-  double roundTime = 60;
+  late double roundTime;
   late double timeLeft;
 
   bool isQuizActive = false;
   bool roundCompleted = false;
+  bool isGameStarted = false;
+  bool isSafeZoneSpawned = false;
 
-  static const double screenWidth = 540;
-  static const double screenHeight = 960;
-  static const double worldWidth = 1600;
+  final double scrollSpeed = 150; // 장애물 및 배경 스크롤 속도
+  String? currentExplanation;
+
+  final double obstacleSpawnRate = 2.0; // 장애물 생성 주기 (초)
+  final int obstaclesPerSpawn = 1;
+  double timeSinceLastSpawn = 0; // 장애물 생성 시간 누적값
+
+  final double safeZoneSpawnDelay = 20.0; // SafeZone 생성 시점 (초)
+  double timeElapsed = 0.0; // 라운드 경과 시간
 
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    background = BackgroundComponent();
-    await add(background);
-    await background.setRound(round);
+    // 배경 이미지 구성 (세로 반복)
+    background = await ParallaxComponent.load(
+      [ParallaxImageData('bg_$round.png')],
+      repeat: ImageRepeat.repeatY,
+      baseVelocity: Vector2(0, scrollSpeed),
+      size: Vector2(size.x, scrollSpeed * getRoundTime(round) * 3),
+    )..priority = -10;
+    add(background);
 
-    joystick = JoystickComponent(
-      knob: CircleComponent(radius: 15, paint: Paint()..color = Colors.grey),
-      background: CircleComponent(radius: 40, paint: Paint()..color = Colors.black26),
-      margin: const EdgeInsets.only(left: 40, bottom: 80),
-    )..priority = 100;
-    add(joystick);
+    // 플레이어 생성 (가운데 하단 위치)
+    player = PlayerComponent(position: Vector2(250, screenHeight - 100));
+    add(player);
 
-    player = PlayerComponent(position: Vector2(50, 400));
-    world.add(player);
-
-    cameraComponent = CameraComponent.withFixedResolution(
-      world: world,
-      width: screenWidth,
-      height: screenHeight,
-    );
-    add(cameraComponent);
-    camera = cameraComponent;
-    camera.follow(player);
-
+    // 생명 표시 HUD
     lifeDisplay = LifeDisplay(lives: lives)
-      ..priority = 100
-      ..position = Vector2(size.x - 20, 20)
-      ..anchor = Anchor.topRight;
+      ..position = Vector2(screenWidth - 20, 40)
+      ..anchor = Anchor.topRight
+      ..priority = 100;
     add(lifeDisplay);
 
+    // 타이머 바 HUD
     roundTime = getRoundTime(round);
     timerBar = TimerBar(totalTime: roundTime)
-      ..priority = 100
-      ..position = Vector2(20, 20)
-      ..anchor = Anchor.topLeft;
+      ..position = Vector2(30, 40)
+      ..anchor = Anchor.topLeft
+      ..priority = 100;
     add(timerBar);
 
-    spawnObstacles();
-    spawnSafeZone();
+    // 왼쪽 버튼
+    final leftButton = HudButtonComponent(
+      button: CircleComponent(radius: 40, paint: Paint()..color = Colors.white.withOpacity(0.7)),
+      buttonDown: CircleComponent(radius: 40, paint: Paint()..color = Colors.grey.shade400),
+      position: Vector2(40, screenHeight - 50),
+      onPressed: () => player.moveLeftPressed = true,
+      onReleased: () => player.moveLeftPressed = false,
+    )..priority = 101;
+    add(leftButton);
+
+    // 오른쪽 버튼
+    final rightButton = HudButtonComponent(
+      button: CircleComponent(radius: 40, paint: Paint()..color = Colors.white.withOpacity(0.7)),
+      buttonDown: CircleComponent(radius: 40, paint: Paint()..color = Colors.grey.shade400),
+      position: Vector2(screenWidth - 100, screenHeight - 50),
+      onPressed: () => player.moveRightPressed = true,
+      onReleased: () => player.moveRightPressed = false,
+    )..priority = 101;
+    add(rightButton);
 
     timeLeft = roundTime;
+    initializeOverlays();
+    overlays.add('StartButtonOverlay'); // 게임 시작 전 버튼
+  }
+
+  void initializeOverlays() {
+    overlays.addEntry('StartButtonOverlay', (_, game) => StartButtonOverlay(gameRef: game as AvoidTheBiasGame));
+    overlays.addEntry('QuizOverlay', (_, game) => QuizOverlay(gameRef: game as AvoidTheBiasGame));
   }
 
   @override
   void update(double dt) {
     super.update(dt);
+    if (!isGameStarted) return;
 
     if (!isQuizActive && !roundCompleted) {
       timeLeft -= dt;
+      timeElapsed += dt;
       timerBar.updateTime(timeLeft);
+      if (timeLeft <= 0) endGame();
+      if (timeElapsed >= safeZoneSpawnDelay && !isSafeZoneSpawned) spawnSafeZone();
 
-      if (timeLeft <= 0) {
-        endGame();
+      timeSinceLastSpawn += dt;
+      if (timeSinceLastSpawn >= obstacleSpawnRate) {
+        timeSinceLastSpawn = 0;
+        _spawnObstacles();
+      }
+
+      for (final obs in children.whereType<DiscriminationObstacle>()) {
+        obs.position.y += scrollSpeed * dt;
+        if (obs.position.y > screenHeight + 100) obs.removeFromParent();
+      }
+
+      if (safeZone != null) safeZone!.position.y += scrollSpeed * dt;
+    }
+  }
+
+  void startGame() {
+    isGameStarted = true;
+    timeElapsed = 0.0;
+    isSafeZoneSpawned = false;
+    overlays.remove('StartButtonOverlay');
+    _initialObstacleSetup();
+  }
+
+  void _initialObstacleSetup() {
+    for (int row = 0; row < 3; row++) {
+      for (int i = 0; i < 2; i++) {
+        final rand = Random();
+        final minX = 100.0, maxX = 440.0;
+        final x = minX + rand.nextDouble() * (maxX - minX);
+        final obs = DiscriminationObstacle.randomObstacle(x - 20, x + 20);
+        obs.position.y = -200.0 - (row * 250) - rand.nextDouble() * 50;
+        add(obs);
       }
     }
-
-    player.position.x = player.position.x.clamp(0, worldWidth - player.size.x);
-    player.position.y = player.position.y.clamp(0, screenHeight - player.size.y);
   }
 
   double getRoundTime(int round) {
@@ -109,29 +171,37 @@ class AvoidTheBiasGame extends FlameGame
     }
   }
 
-  void spawnObstacles() {
-    const double minX = 300;
-    const double maxX = 1500;
-    int baseCount = 15;
-    int count = (baseCount * pow(1.3, round - 1).toDouble()).round();
+  void _spawnObstacles() {
+    _spawnSingleObstacleAtTop();
+  }
 
-    for (int i = 0; i < count; i++) {
-      final double x = minX + Random().nextDouble() * (maxX - minX);
-      final double y = 280 + Random().nextDouble() * 150;
-      world.add(DiscriminationObstacle.randomObstacle(x, y));
-    }
+  void _spawnSingleObstacleAtTop() {
+    final rand = Random();
+    final minX = 100.0, maxX = 440.0;
+    final x = minX + rand.nextDouble() * (maxX - minX);
+    final obs = DiscriminationObstacle.randomObstacle(x - 20, x + 20);
+    final offset = rand.nextDouble() * 30;
+    obs.position.y = -obs.size.y - offset;
+    add(obs);
   }
 
   void spawnSafeZone() {
-    final safeZone = SafeZone(Vector2(worldWidth - 100, 400));
-    world.add(safeZone);
+    if (isSafeZoneSpawned) return;
+    isSafeZoneSpawned = true;
+    safeZone = SafeZone(Vector2(250.0, -100.0));
+    add(safeZone!);
   }
 
-  void triggerQuiz() async {
+  /// 퀴즈를 호출하고 게임을 일시정지
+  void triggerQuiz({required String explanation}) {
+    if (isQuizActive) return;
+    pauseEngine();
     isQuizActive = true;
+    currentExplanation = explanation;
     overlays.add('QuizOverlay');
   }
 
+  /// 퀴즈 정답 처리 및 설명 팝업 → 엔진 재시작
   void resolveQuiz(bool correct) {
     overlays.remove('QuizOverlay');
     isQuizActive = false;
@@ -141,8 +211,34 @@ class AvoidTheBiasGame extends FlameGame
       lifeDisplay.updateLives(lives);
       if (lives <= 0) {
         endGame();
+        return;
       }
+      final explanationToShow = currentExplanation;
+      if (explanationToShow != null) {
+        showDialog(
+          context: buildContext!,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text('설명'),
+            content: Text(explanationToShow),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(buildContext!);
+                  resumeEngine();
+                },
+                child: const Text('확인'),
+              )
+            ],
+          ),
+        );
+      } else {
+        resumeEngine();
+      }
+    } else {
+      resumeEngine();
     }
+    currentExplanation = null;
   }
 
   void handleSafeZoneReached() {
@@ -175,11 +271,16 @@ class AvoidTheBiasGame extends FlameGame
         builder: (_) => AlertDialog(
           title: const Text('게임 종료'),
           content: const Text('모든 라운드를 클리어했습니다!'),
-          actions: [TextButton(onPressed: () => Navigator.pop(buildContext!), child: const Text('확인'))],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(buildContext!),
+              child: const Text('확인'),
+            )
+          ],
         ),
       );
     } else {
-      round++;
+      round += 1;
       roundCompleted = true;
       Future.delayed(const Duration(seconds: 2), () {
         resetRound();
@@ -187,16 +288,22 @@ class AvoidTheBiasGame extends FlameGame
     }
   }
 
-  void resetRound() async {
-    world.children.whereType<DiscriminationObstacle>().forEach(world.remove);
-    player.position = Vector2(50, 400);
+  void resetRound() {
+    children.whereType<DiscriminationObstacle>().forEach((c) => c.removeFromParent());
+    if (safeZone != null) {
+      safeZone!.removeFromParent();
+      safeZone = null;
+    }
+    player.position = Vector2(250, screenHeight - 100);
     roundTime = getRoundTime(round);
     timeLeft = roundTime;
     timerBar.resetTime(timeLeft);
-    spawnObstacles();
-    spawnSafeZone();
-    await background.setRound(round);
+    background.parallax?.baseVelocity = Vector2(0, scrollSpeed);
     roundCompleted = false;
+    isSafeZoneSpawned = false;
+    timeElapsed = 0.0;
+    timeSinceLastSpawn = 0;
+    _initialObstacleSetup();
   }
 
   void endGame() {

@@ -15,6 +15,7 @@ class QuizOverlay extends StatefulWidget {
 class _QuizOverlayState extends State<QuizOverlay> {
   String question = '';
   bool? answer;
+  String? explanation;
 
   @override
   void initState() {
@@ -30,11 +31,15 @@ class _QuizOverlayState extends State<QuizOverlay> {
     setState(() {
       question = selected['question'];
       answer = selected['answer'];
+      explanation = selected['explanation'];
     });
   }
 
   void handleAnswer(bool selected) {
     final isCorrect = (selected == answer);
+    if (!isCorrect) {
+      widget.gameRef.currentExplanation = explanation;
+    }
     widget.gameRef.resolveQuiz(isCorrect);
   }
 

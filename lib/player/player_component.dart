@@ -3,14 +3,26 @@ import 'package:flame/collisions.dart';
 import '../game/avoid_the_bias_game.dart';
 import 'package:flutter/material.dart';
 
-class PlayerComponent extends SpriteComponent
-    with HasGameRef<AvoidTheBiasGame> {
-  final double moveSpeed = 200;
+class PlayerComponent extends SpriteComponent with HasGameRef<AvoidTheBiasGame> {
+  /// Horizontal move speed in pixels per second
+  final double moveSpeed = 220;
+
+  /// Velocity vector used each frame
   Vector2 velocity = Vector2.zero();
-  bool isOnGround = true;
+
+  /// Flags set by HUD buttons for left/right input
+  bool moveLeftPressed = false;
+  bool moveRightPressed = false;
+
+  /// 이전 프레임의 방향을 저장하여 버튼 오작동시에도 부드럽게 처리
+  double prevDirection = 0;
+
+  /// 경계에 도달했는지 확인하는 변수
+  bool isAtLeftBoundary = false;
+  bool isAtRightBoundary = false;
 
   PlayerComponent({required Vector2 position})
-      : super(position: position, size: Vector2(48, 48));
+      : super(position: position, size: Vector2(70, 70));
 
   @override
   Future<void> onLoad() async {
@@ -28,35 +40,43 @@ class PlayerComponent extends SpriteComponent
   void update(double dt) {
     super.update(dt);
 
-    // 조이스틱 방향 받아오기
-    final direction = gameRef.joystick.delta.normalized();
-    velocity = direction * moveSpeed;
-    position += velocity * dt;
+    // 경계 상태 업데이트
+    isAtLeftBoundary = position.x <= 0;
+    isAtRightBoundary = position.x >= gameRef.size.x - size.x;
 
-    // 중력 적용은 점프와 지면 충돌 여부에 따라 병합 필요
-    if (!isOnGround) {
-      velocity.y += 600 * dt; // gravity
+    // 터치 입력 처리 개선
+    double dx = 0;
+    if (moveLeftPressed && !isAtLeftBoundary) dx -= 1;
+    if (moveRightPressed && !isAtRightBoundary) dx += 1;
+    
+    // 반대 방향 동시 입력시 이전 방향 유지 (부드러운 움직임 위해)
+    if (moveLeftPressed && moveRightPressed) {
+      dx = prevDirection;
+    } else {
+      prevDirection = dx;
     }
 
-    if (position.y >= 400) {
-      position.y = 400;
-      velocity.y = 0;
-      isOnGround = true;
+    // 이동 속도에 가속도 효과 적용 (부드러운 이동)
+    double targetVelocityX = dx * moveSpeed;
+    double currentVelocityX = velocity.x;
+    
+    // 부드러운 가속/감속 적용
+    if (targetVelocityX != currentVelocityX) {
+      double acceleration = 1500.0 * dt; // 가속도 조정
+      if (targetVelocityX > currentVelocityX) {
+        velocity.x = (currentVelocityX + acceleration).clamp(-moveSpeed, moveSpeed);
+      } else {
+        velocity.x = (currentVelocityX - acceleration).clamp(-moveSpeed, moveSpeed);
+      }
     }
+    
+    // 적용된 속도로 이동
+    position.add(velocity * dt);
+
+    // 화면 경계 제한
+    position.x = position.x.clamp(0, gameRef.size.x - size.x);
+
+    // 수직 위치 고정
+    position.y = gameRef.size.y - size.y - 50;
   }
-
-  void jump() {
-    if (isOnGround) {
-      velocity.y = -300;
-      isOnGround = false;
-    }
-  }
-
-  // @override
-  // void render(Canvas canvas) {
-  //   super.render(canvas);
-  //   // 디버깅용 색상 박스
-  //   final paint = Paint()..color = const Color(0xFF42A5F5);
-  //   canvas.drawRect(size.toRect(), paint);
-  // }
 }
